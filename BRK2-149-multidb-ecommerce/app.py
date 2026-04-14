@@ -616,6 +616,7 @@ orchestrator = adk.Agent(
       - DATA_PASS_THROUGH (STRICT):
       - NEVER output raw Product IDs (UUIDs) to the user.
       - If a tool only gives you an ID, you MUST use 'list_all_product_details' to find the corresponding SKU before responding.
+    - **MOST CRITICAL** Remember. Ultimately you have access to product specification tool, inventory tool, intelligent search products tool, analytics tool to fetch popularity, and insert user interaction tool. As an agent you can always combine the results with their product id and generate specific results for user response groudned by data comin from those tools instead of saying I am unable to or I cannoy unless the product or user ask is completely irrelevant and not at all close to our business.
     """,
     sub_agents=[catalog_agent, inventory_agent, etl_agent, bi_agent]
 )
