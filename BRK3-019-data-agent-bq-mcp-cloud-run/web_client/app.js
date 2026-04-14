@@ -46,6 +46,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 const config = await res.json();
                 appName = config.appName || appName;
+                
+                // Update header with app info
+                const appTitleEl = document.getElementById('app-title');
+                const appDescEl = document.getElementById('app-desc');
+                
+                if (appTitleEl) appTitleEl.textContent = appName;
+                if (appDescEl) appDescEl.textContent = config.description || '';
             }
         } catch (e) {
             console.error('Failed to load config:', e);

@@ -111,5 +111,6 @@ root_agent = LlmAgent(
     model=custom_model,
     name='data_agent',
     instruction=system_instruction,
+    description="A helpful assistant that can answer questions using NYC Citibike data.",
     tools=[bigquery_toolset]
 )

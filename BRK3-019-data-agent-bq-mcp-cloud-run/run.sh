@@ -23,7 +23,7 @@ kill_port 8080
 # Start Agent Server
 echo "Starting Agent Server..."
 # Using the command specified by the user
-uv run adk api_server --session_service_uri sqlite:///./.adk/sessions.db . &
+uv run adk api_server --session_service_uri sqlite:///./agents/.adk/sessions.db ./agents &
 AGENT_PID=$!
 
 # Start Web Client Server

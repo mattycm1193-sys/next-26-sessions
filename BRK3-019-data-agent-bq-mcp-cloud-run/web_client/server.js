@@ -43,44 +43,55 @@ const server = http.createServer(async (req, res) => {
     // Serve config
     if (req.url === '/config') {
         let appName = process.env.AGENT_NAME;
-        if (!appName) {
-            try {
-                const apps = await new Promise((resolve, reject) => {
-                    const options = {
-                        hostname: TARGET_HOST,
-                        port: TARGET_PORT,
-                        path: '/list-apps',
-                        method: 'GET'
-                    };
-                    const apiReq = http.request(options, (apiRes) => {
-                        let data = '';
-                        apiRes.on('data', (chunk) => { data += chunk; });
-                        apiRes.on('end', () => {
-                            try {
-                                resolve(JSON.parse(data));
-                            } catch (e) {
-                                reject(e);
-                            }
-                        });
+        let appDescription = '';
+        
+        try {
+            const appsResponse = await new Promise((resolve, reject) => {
+                const options = {
+                    hostname: TARGET_HOST,
+                    port: TARGET_PORT,
+                    path: '/list-apps?detailed=true',
+                    method: 'GET'
+                };
+                const apiReq = http.request(options, (apiRes) => {
+                    let data = '';
+                    apiRes.on('data', (chunk) => { data += chunk; });
+                    apiRes.on('end', () => {
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (e) {
+                            reject(e);
+                        }
                     });
-                    apiReq.on('error', (e) => reject(e));
-                    apiReq.end();
                 });
+                apiReq.on('error', (e) => reject(e));
+                apiReq.end();
+            });
 
-                if (apps && apps.length > 0) {
-                    appName = apps.find(a => a !== 'web_client') || apps[0];
+            const appsList = appsResponse.apps || [];
+            
+            if (!appName) {
+                if (appsList.length > 0) {
+                    const targetApp = appsList.find(a => a.name !== 'web_client') || appsList[0];
+                    appName = targetApp.name;
+                    appDescription = targetApp.description;
                 } else {
                     appName = 'agent';
                 }
-                console.log(`Auto-detected appName: ${appName} from ${JSON.stringify(apps)}`);
-            } catch (e) {
-                console.error('Failed to fetch apps from API server:', e);
-                appName = 'agent';
+            } else {
+                const targetApp = appsList.find(a => a.name === appName);
+                if (targetApp) {
+                    appDescription = targetApp.description;
+                }
             }
+            console.log(`Config resolved: appName=${appName}, description=${appDescription}`);
+        } catch (e) {
+            console.error('Failed to fetch apps from API server:', e);
+            if (!appName) appName = 'agent';
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ appName }));
+        res.end(JSON.stringify({ appName, description: appDescription }));
         return;
     }
 
