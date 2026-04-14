@@ -89,7 +89,7 @@ tools:
         type: string
         description: The term to search for within the product names.
     statement: |
-      SELECT product_id, name, price 
+      SELECT CAST(product_id AS VARCHAR) as product_id, name, price 
       FROM products_core_table 
       WHERE name ILIKE '%' || $1 || '%'
       LIMIT 10;
