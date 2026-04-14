@@ -367,12 +367,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial load
     (async () => {
-        await loadConfig();
-        await loadSessions();
-        if (sessionId) {
-            const savedSessionId = sessionId;
-            sessionId = null; // Force switch to load history
-            await switchSession(savedSessionId);
+        const loadingOverlay = document.getElementById('app-loading');
+        try {
+            await loadConfig();
+            await loadSessions();
+            if (sessionId) {
+                const savedSessionId = sessionId;
+                sessionId = null; // Force switch to load history
+                await switchSession(savedSessionId);
+            }
+        } finally {
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('hidden');
+            }
         }
     })();
 
