@@ -1,6 +1,8 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 
 // Load .env file if it exists
 try {
@@ -37,6 +39,70 @@ try {
     console.error('Failed to parse SERVER_BASE_URL, using defaults:', e);
 }
 
+let cachedToken = null;
+let tokenExpiry = 0;
+
+async function getIdentityToken() {
+    const now = Date.now();
+    if (cachedToken && now < tokenExpiry) {
+        return cachedToken;
+    }
+
+    let token = null;
+    const audience = process.env.SERVER_BASE_URL || 'http://localhost:8000';
+
+    // 1. Try metadata server
+    try {
+        token = await new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'metadata.google.internal',
+                path: `/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(audience)}`,
+                headers: {
+                    'Metadata-Flavor': 'Google'
+                },
+                timeout: 500
+            };
+            const metaReq = http.get(options, (metaRes) => {
+                let data = '';
+                metaRes.on('data', (chunk) => data += chunk);
+                metaRes.on('end', () => {
+                    if (metaRes.statusCode === 200) resolve(data.trim());
+                    else reject(new Error(`Status ${metaRes.statusCode}`));
+                });
+            });
+            metaReq.on('error', (err) => reject(err));
+            metaReq.on('timeout', () => {
+                metaReq.destroy();
+                reject(new Error('Timeout'));
+            });
+        });
+        console.log('Successfully fetched identity token from metadata server.');
+    } catch (e) {
+        console.log('Metadata server not available, falling back to gcloud auth...');
+        // 2. Try gcloud auth
+        try {
+            token = await new Promise((resolve, reject) => {
+                exec('gcloud auth print-identity-token', (error, stdout, stderr) => {
+                    if (error) reject(error);
+                    else resolve(stdout.trim());
+                });
+            });
+            console.log('Successfully fetched identity token from gcloud auth.');
+        } catch (e2) {
+            console.error('Failed to get identity token from both metadata server and gcloud auth.');
+            return null;
+        }
+    }
+
+    if (token) {
+        cachedToken = token;
+        tokenExpiry = now + 5 * 60 * 1000; // Cache for 5 minutes
+    }
+    return token;
+}
+
+const apiLib = serverBaseUrl.startsWith('https') ? https : http;
+
 const server = http.createServer(async (req, res) => {
     console.log(`${req.method} ${req.url}`);
 
@@ -46,14 +112,19 @@ const server = http.createServer(async (req, res) => {
         let appDescription = '';
         
         try {
+            const token = await getIdentityToken();
             const appsResponse = await new Promise((resolve, reject) => {
                 const options = {
                     hostname: TARGET_HOST,
                     port: TARGET_PORT,
                     path: '/list-apps?detailed=true',
-                    method: 'GET'
+                    method: 'GET',
+                    headers: {}
                 };
-                const apiReq = http.request(options, (apiRes) => {
+                if (token) {
+                    options.headers['Authorization'] = `Bearer ${token}`;
+                }
+                const apiReq = apiLib.request(options, (apiRes) => {
                     let data = '';
                     apiRes.on('data', (chunk) => { data += chunk; });
                     apiRes.on('end', () => {
@@ -97,19 +168,24 @@ const server = http.createServer(async (req, res) => {
 
     // Proxy API requests to the agent server
     if (req.url.startsWith('/run_sse') || req.url.startsWith('/run') || req.url.startsWith('/apps')) {
+        const token = await getIdentityToken();
+        const headers = { ...req.headers };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        delete headers['host'];
+        delete headers['origin'];
+        delete headers['referer'];
+
         const options = {
             hostname: TARGET_HOST,
             port: TARGET_PORT,
             path: req.url,
             method: req.method,
-            headers: req.headers
+            headers: headers
         };
 
-        // Avoid CORS issues by removing origin headers if necessary,
-        // or let them pass if target handles them.
-        // We keep them to be transparent.
-
-        const proxyReq = http.request(options, (proxyRes) => {
+        const proxyReq = apiLib.request(options, (proxyRes) => {
             res.writeHead(proxyRes.statusCode, proxyRes.headers);
             proxyRes.pipe(res);
         });
