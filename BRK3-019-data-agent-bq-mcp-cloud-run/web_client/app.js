@@ -31,12 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('adk_user_id', userId);
 
     let sessionId = localStorage.getItem('adk_current_session_id');
-    if (!sessionId) {
-        const array = new Uint32Array(1);
-        crypto.getRandomValues(array);
-        sessionId = "session_" + array[0].toString(36);
-        localStorage.setItem('adk_current_session_id', sessionId);
-    }
 
     let appName = "agent"; // Default
 
@@ -160,8 +154,10 @@ document.addEventListener('DOMContentLoaded', () => {
             sessions.sort((a, b) => b.lastUpdateTime - a.lastUpdateTime);
 
             renderSessionList(sessions);
+            return sessions;
         } catch (error) {
             console.error('Error loading sessions:', error);
+            return [];
         }
     }
 
@@ -336,6 +332,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (state.isThinking) stopThinking(state);
 
+        if (localStorage.getItem(`adk_auth_completed_${sessionId}`) === 'true') {
+            const successCard = document.createElement('div');
+            successCard.className = 'auth-success-card';
+            successCard.innerHTML = '<i class="fas fa-check-circle"></i> Authenticated with Google';
+            const lastEl = state.messageElements[state.messageElements.length - 1];
+            if (lastEl) {
+                lastEl.appendChild(successCard);
+            }
+        }
+
         prevScrollHeight = chatContainer.scrollHeight;
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
@@ -370,11 +376,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const loadingOverlay = document.getElementById('app-loading');
         try {
             await loadConfig();
-            await loadSessions();
+            const sessions = await loadSessions();
+            
+            let exists = sessionId && sessions.some(s => s.id === sessionId);
+            if (!exists) {
+                if (sessions.length > 0) {
+                    sessionId = sessions[0].id; // pick the most recent session
+                } else {
+                    sessionId = null;
+                }
+            }
+            
+            if (!sessionId) {
+                try {
+                    const response = await fetch(`/apps/${appName}/users/${userId}/sessions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({})
+                    });
+                    if (!response.ok) throw new Error('Failed to create session');
+                    const newSession = await response.json();
+                    sessionId = newSession.id;
+                    localStorage.setItem(`session_time_${sessionId}`, Date.now());
+                } catch (error) {
+                    console.error('Error creating initial session:', error);
+                }
+            }
+
             if (sessionId) {
+                localStorage.setItem('adk_current_session_id', sessionId);
                 const savedSessionId = sessionId;
                 sessionId = null; // Force switch to load history
                 await switchSession(savedSessionId);
+                await loadSessions(); // Refresh session list to update active selection
             }
         } finally {
             if (loadingOverlay) {
@@ -517,12 +553,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (trimmed === '[DONE]') return;
                 try {
                     const data = JSON.parse(trimmed);
-                    processStreamData(data, agentMessageDiv, targetSessionId);
+                    return processStreamData(data, agentMessageDiv, targetSessionId);
                 } catch (e) {
                     console.error('Error parsing JSON from SSE:', e, 'Raw data:', trimmed);
                 }
             }
 
+            let isAuthPending = false;
             while (true) {
                 const { value, done } = await reader.read();
 
@@ -535,13 +572,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         const trimmedLine = line.trim();
                         if (trimmedLine === '') {
                             if (currentEventData) {
-                                handleEvent(currentEventData, agentMessageDiv);
+                                if (handleEvent(currentEventData, agentMessageDiv)) {
+                                    isAuthPending = true;
+                                    break;
+                                }
                                 currentEventData = '';
                             }
                         } else if (line.startsWith('data: ')) {
                             currentEventData += line.substring(6) + '\n';
                         }
                     }
+                }
+
+                if (isAuthPending) {
+                    reader.cancel();
+                    activeConnections.delete(targetSessionId);
+                    updateStatus('', '', targetSessionId);
+                    break;
                 }
 
                 if (done) {
@@ -574,6 +621,155 @@ document.addEventListener('DOMContentLoaded', () => {
             if (header) {
                 header.innerHTML = `<i class="fas fa-brain"></i> Thought for a moment`;
             }
+        }
+    }
+
+    function handleAuthRequired(toolCall, agentMessageDiv, targetSessionId) {
+        const authConfig = toolCall.args.authConfig || toolCall.args;
+        const functionCallId = toolCall.id || toolCall.functionCallId;
+
+        const card = document.createElement('div');
+        card.className = 'auth-required-card';
+
+        const title = document.createElement('h4');
+        title.innerHTML = '<i class="fas fa-lock"></i> Authorization Required';
+        card.appendChild(title);
+
+        const desc = document.createElement('p');
+        desc.textContent = 'The agent requires your authorization to access external tools.';
+        card.appendChild(desc);
+
+        const loginBtn = document.createElement('button');
+        loginBtn.className = 'auth-login-button';
+        loginBtn.textContent = 'Sign In with Google';
+        card.appendChild(loginBtn);
+
+        agentMessageDiv.appendChild(card);
+
+        loginBtn.addEventListener('click', () => {
+            const redirectUri = window.location.origin + "/auth_callback.html";
+            const authUri = authConfig.exchangedAuthCredential.oauth2.authUri + "&redirect_uri=" + encodeURIComponent(redirectUri);
+
+            const popup = window.open(authUri, 'adk_oauth', 'width=600,height=700');
+
+            function messageListener(event) {
+                if (event.origin !== window.location.origin) return;
+                if (event.data && event.data.type === 'ADK_OAUTH_CALLBACK') {
+                    window.removeEventListener('message', messageListener);
+                    card.innerHTML = '<div class="auth-success-spinner"><svg class="spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Authenticating...</div>';
+                    resumeStreamAfterAuth(event.data.url, redirectUri, authConfig, functionCallId, targetSessionId, agentMessageDiv, card);
+                }
+            }
+            window.addEventListener('message', messageListener);
+        });
+    }
+
+    async function resumeStreamAfterAuth(redirectedUrl, redirectUri, authConfig, functionCallId, targetSessionId, agentMessageDiv, card) {
+        authConfig.exchangedAuthCredential.oauth2.authResponseUri = redirectedUrl;
+        authConfig.exchangedAuthCredential.oauth2.redirectUri = redirectUri;
+
+        const payload = {
+            appName: appName,
+            userId: userId,
+            sessionId: targetSessionId,
+            newMessage: {
+                role: "user",
+                parts: [{
+                    functionResponse: {
+                        id: functionCallId,
+                        name: 'adk_request_credential',
+                        response: authConfig
+                    }
+                }]
+            },
+            streaming: true
+        };
+
+        activeConnections.add(targetSessionId);
+        updateStatus('Thinking...', 'thinking', targetSessionId);
+
+        try {
+            const response = await fetch(`/run_sse`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let currentEventData = '';
+
+            function handleEvent(dataStr, agentMessageDiv) {
+                const trimmed = dataStr.trim();
+                if (trimmed === '[DONE]') return;
+                try {
+                    const data = JSON.parse(trimmed);
+                    return processStreamData(data, agentMessageDiv, targetSessionId);
+                } catch (e) {
+                    console.error('Error parsing JSON from SSE:', e, 'Raw data:', trimmed);
+                }
+            }
+
+            let isAuthPending = false;
+            while (true) {
+                const { value, done } = await reader.read();
+                if (value) {
+                    if (card && card.parentNode) {
+                        card.remove();
+                        localStorage.setItem(`adk_auth_completed_${targetSessionId}`, 'true');
+                        const successCard = document.createElement('div');
+                        successCard.className = 'auth-success-card';
+                        successCard.innerHTML = '<i class="fas fa-check-circle"></i> Authenticated with Google';
+                        agentMessageDiv.appendChild(successCard);
+                    }
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        const trimmedLine = line.trim();
+                        if (trimmedLine === '') {
+                            if (currentEventData) {
+                                if (handleEvent(currentEventData, agentMessageDiv)) {
+                                    isAuthPending = true;
+                                    break;
+                                }
+                                currentEventData = '';
+                            }
+                        } else if (line.startsWith('data: ')) {
+                            currentEventData += line.substring(6) + '\n';
+                        }
+                    }
+                }
+
+                if (isAuthPending) {
+                    reader.cancel();
+                    activeConnections.delete(targetSessionId);
+                    updateStatus('', '', targetSessionId);
+                    break;
+                }
+
+                if (done) {
+                    if (buffer && buffer.startsWith('data: ')) {
+                        currentEventData += buffer.substring(6) + '\n';
+                    }
+                    if (currentEventData) {
+                        handleEvent(currentEventData, agentMessageDiv);
+                    }
+                    activeConnections.delete(targetSessionId);
+                    updateStatus('', '', targetSessionId);
+                    break;
+                }
+            }
+        } catch (error) {
+             console.error('Error during stream resumption:', error);
+             activeConnections.delete(targetSessionId);
+             updateStatus('', '', targetSessionId);
         }
     }
 
@@ -659,34 +855,39 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus('Working...', 'working', targetSessionId);
             if (state.isThinking) stopThinking(state);
 
-            const details = document.createElement('details');
-            details.classList.add('tool-call');
-
-            const summary = document.createElement('summary');
-            summary.innerHTML = `<i class="fas fa-cogs"></i> Tool Call: ${toolCall.name}`;
-            details.appendChild(summary);
-
-            const content = document.createElement('div');
-            content.classList.add('tool-content');
-
-            if (toolCall.args && toolCall.args.code) {
-                const markdownCode = `\`\`\`python\n${toolCall.args.code}\n\`\`\``;
-                content.innerHTML = DOMPurify.sanitize(marked.parse(markdownCode));
+            if (toolCall.name === 'adk_request_credential') {
+                handleAuthRequired(toolCall, agentMessageDiv, targetSessionId);
+                return true;
             } else {
-                const pre = document.createElement('pre');
-                const code = document.createElement('code');
-                code.classList.add('language-json');
-                code.textContent = JSON.stringify(toolCall.args, null, 2);
-                pre.appendChild(code);
-                content.appendChild(pre);
+                const details = document.createElement('details');
+                details.classList.add('tool-call');
+
+                const summary = document.createElement('summary');
+                summary.innerHTML = `<i class="fas fa-cogs"></i> Tool Call: ${toolCall.name}`;
+                details.appendChild(summary);
+
+                const content = document.createElement('div');
+                content.classList.add('tool-content');
+
+                if (toolCall.args && toolCall.args.code) {
+                    const markdownCode = `\`\`\`python\n${toolCall.args.code}\n\`\`\``;
+                    content.innerHTML = DOMPurify.sanitize(marked.parse(markdownCode));
+                } else {
+                    const pre = document.createElement('pre');
+                    const code = document.createElement('code');
+                    code.classList.add('language-json');
+                    code.textContent = JSON.stringify(toolCall.args, null, 2);
+                    pre.appendChild(code);
+                    content.appendChild(pre);
+                }
+                content.querySelectorAll('pre code').forEach(hljs.highlightElement);
+                details.appendChild(content);
+
+                agentMessageDiv.appendChild(details);
+
+                state.currentBlockType = 'toolCall';
+                state.currentBlockElement = details;
             }
-            content.querySelectorAll('pre code').forEach(hljs.highlightElement);
-            details.appendChild(content);
-
-            agentMessageDiv.appendChild(details);
-
-            state.currentBlockType = 'toolCall';
-            state.currentBlockElement = details;
         }
 
         if (toolResponse) {

@@ -686,4 +686,90 @@ body.dark-theme .loading-overlay {
     height: 48px;
 }
 
+/* Auth Required Card */
+.auth-required-card {
+    background: rgba(251, 188, 4, 0.08); /* google yellow tint */
+    border: 1px solid rgba(251, 188, 4, 0.3);
+    border-radius: 14px;
+    padding: 16px;
+    margin: 12px 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    backdrop-filter: blur(6px);
+    transition: all 0.3s ease;
+}
 
+body.dark-theme .auth-required-card {
+    background: rgba(251, 188, 4, 0.12);
+    border-color: rgba(251, 188, 4, 0.4);
+}
+
+.auth-required-card h4 {
+    margin: 0 0 6px 0;
+    color: var(--google-yellow);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.1rem;
+}
+
+.auth-required-card p {
+    margin: 0 0 16px 0;
+    color: var(--text-color);
+    font-size: 0.95rem;
+    opacity: 0.9;
+}
+
+.auth-login-button {
+    background-color: var(--google-blue);
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+}
+
+.auth-login-button:hover {
+    background-color: var(--accent-hover);
+    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
+}
+
+.auth-success-spinner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--google-blue);
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.auth-success-spinner svg {
+    width: 18px;
+    height: 18px;
+}
+
+.auth-success-card {
+    background: rgba(52, 168, 83, 0.08);
+    border: 1px solid rgba(52, 168, 83, 0.3);
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+    backdrop-filter: blur(6px);
+    color: var(--google-green);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+body.dark-theme .auth-success-card {
+    background: rgba(52, 168, 83, 0.12);
+    border-color: rgba(52, 168, 83, 0.4);
+}

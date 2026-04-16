@@ -125,7 +125,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Serve static files
-    let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+    const parsedPath = req.url.split('?')[0];
+    let filePath = path.join(__dirname, parsedPath === '/' ? 'index.html' : parsedPath);
 
     // Security check: ensure file is within __dirname
     if (!filePath.startsWith(__dirname)) {

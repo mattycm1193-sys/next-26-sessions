@@ -61,7 +61,10 @@ custom_model = LiteLlm(
 
 
 tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED, location="US")
-if "OAUTH_CLIENT_ID" in os.environ and "OAUTH_CLIENT_SECRET" in os.environ:
+if (
+    os.getenv("OAUTH_CLIENT_ID") and
+    os.getenv("OAUTH_CLIENT_SECRET")
+):
     credentials_config = BigQueryCredentialsConfig(
         client_id=os.getenv("OAUTH_CLIENT_ID"),
         client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
