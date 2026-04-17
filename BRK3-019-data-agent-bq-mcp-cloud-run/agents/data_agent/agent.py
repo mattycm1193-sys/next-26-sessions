@@ -108,6 +108,8 @@ Plan of action:
 5. Retrieve data by generating BigQuery SQL and using `execute_sql`.
    Always use Dry Run to verify SQL correctness.
    Use `{project_id}` to run BigQuery queries (`project_id` parameter of `execute_sql`).
+
+Do not use LaTeX in your responses. When giving final asnwer, use Markdown.
 """
 
 root_agent = LlmAgent(

@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let sessionStates = {}; // { sessionId: { messageElements: Element[], input: string, ... } }
+    let currentToolName = 'Tool';
     const activeConnections = new Set();
 
     function getSessionState(id) {
@@ -281,20 +282,100 @@ document.addEventListener('DOMContentLoaded', () => {
         state.messageElements = [];
         let currentAgentDiv = null;
 
-        events.forEach(event => {
+        // Deduplicate cumulative incremental events
+        let filteredEvents = [];
+        for (let i = 0; i < events.length; i++) {
+            const curr = events[i];
+            const next = events[i + 1];
+            
+            const currRole = curr.role || (curr.content && curr.content.role);
+            const nextRole = next ? (next.role || (next.content && next.content.role)) : null;
+
+            if (next && currRole === 'agent' && nextRole === 'agent') {
+                let currText = curr.text || (curr.content && curr.content.parts && curr.content.parts.map(p => p.text || p.thought || '').join(''));
+                let nextText = next.text || (next.content && next.content.parts && next.content.parts.map(p => p.text || p.thought || '').join(''));
+                
+                if (currText && nextText && nextText.startsWith(currText) && nextText !== currText) {
+                    continue;
+                }
+            }
+
+            // Deduplicate contiguous identical framework tool results safely!
+            if (currRole === 'user') {
+                let currFunc = curr.content && curr.content.parts && curr.content.parts.find(p => p.functionResponse);
+                if (currFunc) {
+                    let foundSubsequent = false;
+                    for (let j = i + 1; j < events.length; j++) {
+                        let later = events[j];
+                        let laterRole = later.role || (later.content && later.content.role);
+                        if (laterRole === 'user') {
+                            let laterFunc = later.content && later.content.parts && later.content.parts.find(p => p.functionResponse);
+                            if (laterFunc && laterFunc.functionResponse.name === currFunc.functionResponse.name) {
+                                foundSubsequent = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (foundSubsequent) {
+                        continue; // Discard stale pre-auth attempt!
+                    }
+                }
+            }
+            filteredEvents.push(curr);
+        }
+
+        filteredEvents.forEach(event => {
             const role = event.role || (event.content && event.content.role);
 
             if (role === 'user') {
-                if (currentAgentDiv) {
+                let isRealQuestion = event.content && event.content.parts && event.content.parts.some(p => p.text && !p.text.startsWith('[AUTH_EVENT] ') && !p.functionResponse);
+                if (isRealQuestion && currentAgentDiv) {
                     if (state.isThinking) stopThinking(state);
                     currentAgentDiv = null;
                 }
-                let text = '';
                 if (event.content && event.content.parts) {
-                    text = event.content.parts.map(p => p.text).join('');
-                }
-                if (text) {
-                    appendMessage('user', text, null, false);
+                    let hasAuth = false;
+                    for (const p of event.content.parts) {
+                        if (p.text && p.text.startsWith('[AUTH_EVENT] ')) {
+                            const text = p.text.replace('[AUTH_EVENT] ', '');
+                            const successCard = document.createElement('div');
+                            successCard.className = 'auth-success-card';
+                            successCard.innerHTML = `<i class="fas fa-check-circle"></i> ${text}`;
+                            const lastEl = state.messageElements[state.messageElements.length - 1];
+                            if (lastEl) {
+                                lastEl.appendChild(successCard);
+                            } else {
+                                messageList.appendChild(successCard);
+                            }
+                            hasAuth = true;
+                        } else if (p.functionResponse) {
+                            let skip = false;
+                            if (p.functionResponse.name === 'adk_request_credential') {
+                                let hasError = p.functionResponse.response && (p.functionResponse.response.error || p.functionResponse.response.oauth2?.error);
+                                if (!hasError) skip = true;
+                            }
+                            if (!skip) {
+                                const details = document.createElement('details');
+                                details.classList.add('tool-call');
+                                details.innerHTML = `<summary><i class="fas fa-check-circle"></i> Tool Result: ${p.functionResponse.name}</summary>
+                                    <div class="tool-content">
+                                        <pre><code class="language-json">${JSON.stringify(p.functionResponse.response, null, 2)}</code></pre>
+                                    </div>`;
+                                hljs.highlightElement(details.querySelector('code'));
+                                
+                                const lastEl = state.messageElements[state.messageElements.length - 1];
+                                if (lastEl) {
+                                    lastEl.appendChild(details);
+                                } else {
+                                    messageList.appendChild(details);
+                                }
+                            }
+                        }
+                    }
+                    if (!hasAuth) {
+                        let text = event.content.parts.filter(p => p.text && !p.text.startsWith('[AUTH_EVENT] ')).map(p => p.text).join('');
+                        if (text) appendMessage('user', text, null, false);
+                    }
                 }
             } else {
                 let hasRenderableContent = false;
@@ -332,15 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (state.isThinking) stopThinking(state);
 
-        if (localStorage.getItem(`adk_auth_completed_${sessionId}`) === 'true') {
-            const successCard = document.createElement('div');
-            successCard.className = 'auth-success-card';
-            successCard.innerHTML = '<i class="fas fa-check-circle"></i> Authenticated with Google';
-            const lastEl = state.messageElements[state.messageElements.length - 1];
-            if (lastEl) {
-                lastEl.appendChild(successCard);
-            }
-        }
+
 
         prevScrollHeight = chatContainer.scrollHeight;
         chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -627,6 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleAuthRequired(toolCall, agentMessageDiv, targetSessionId) {
         const authConfig = toolCall.args.authConfig || toolCall.args;
         const functionCallId = toolCall.id || toolCall.functionCallId;
+        currentToolName = toolCall.args.toolName || toolCall.args.targetTool || 'Tool';
 
         const card = document.createElement('div');
         card.className = 'auth-required-card';
@@ -652,9 +726,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const popup = window.open(authUri, 'adk_oauth', 'width=600,height=700');
 
+            let isResumingAuth = false;
             function messageListener(event) {
                 if (event.origin !== window.location.origin) return;
                 if (event.data && event.data.type === 'ADK_OAUTH_CALLBACK') {
+                    if (isResumingAuth) return;
+                    isResumingAuth = true;
                     window.removeEventListener('message', messageListener);
                     card.innerHTML = '<div class="auth-success-spinner"><svg class="spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Authenticating...</div>';
                     resumeStreamAfterAuth(event.data.url, redirectUri, authConfig, functionCallId, targetSessionId, agentMessageDiv, card);
@@ -674,13 +751,18 @@ document.addEventListener('DOMContentLoaded', () => {
             sessionId: targetSessionId,
             newMessage: {
                 role: "user",
-                parts: [{
-                    functionResponse: {
-                        id: functionCallId,
-                        name: 'adk_request_credential',
-                        response: authConfig
+                parts: [
+                    {
+                        text: `[AUTH_EVENT] ${currentToolName} authenticated with Google`
+                    },
+                    {
+                        functionResponse: {
+                            id: functionCallId,
+                            name: 'adk_request_credential',
+                            response: authConfig
+                        }
                     }
-                }]
+                ]
             },
             streaming: true
         };
@@ -709,6 +791,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (trimmed === '[DONE]') return;
                 try {
                     const data = JSON.parse(trimmed);
+                    
+                    // Inspect if it carries failed outcomes!
+                    let isFailure = false;
+                    if (data.content && data.content.parts) {
+                        let func = data.content.parts.find(p => p.functionResponse);
+                        if (func) {
+                            let hasError = func.functionResponse.response && (func.functionResponse.response.error || func.functionResponse.response.oauth2?.error || func.functionResponse.response.status === 'ERROR');
+                            let isCredentialError = false;
+                            if (hasError) {
+                                let textStr = JSON.stringify(func.functionResponse.response);
+                                if (textStr.toLowerCase().includes('credential') || textStr.toLowerCase().includes('authenticated') || textStr.toLowerCase().includes('auth')) {
+                                    isCredentialError = true;
+                                }
+                            }
+                            if (func.functionResponse.name === 'adk_request_credential') {
+                                if (hasError) isFailure = true;
+                            } else if (isCredentialError) {
+                                isFailure = true;
+                            }
+                        }
+                    }
+
+                    if (card && card.parentNode) {
+                        card.remove();
+                        const badge = document.createElement('div');
+                        if (isFailure) {
+                            badge.className = 'auth-success-card';
+                            badge.style.backgroundColor = '#fee2e2';
+                            badge.style.borderColor = '#f87171';
+                            badge.style.color = '#b91c1c';
+                            badge.innerHTML = `<i class="fas fa-exclamation-circle"></i> Authentication Failed`;
+                        } else {
+                            badge.className = 'auth-success-card';
+                            badge.innerHTML = `<i class="fas fa-check-circle"></i> ${currentToolName} authenticated with Google`;
+                        }
+                        agentMessageDiv.appendChild(badge);
+                    }
+
                     return processStreamData(data, agentMessageDiv, targetSessionId);
                 } catch (e) {
                     console.error('Error parsing JSON from SSE:', e, 'Raw data:', trimmed);
@@ -719,14 +839,6 @@ document.addEventListener('DOMContentLoaded', () => {
             while (true) {
                 const { value, done } = await reader.read();
                 if (value) {
-                    if (card && card.parentNode) {
-                        card.remove();
-                        localStorage.setItem(`adk_auth_completed_${targetSessionId}`, 'true');
-                        const successCard = document.createElement('div');
-                        successCard.className = 'auth-success-card';
-                        successCard.innerHTML = '<i class="fas fa-check-circle"></i> Authenticated with Google';
-                        agentMessageDiv.appendChild(successCard);
-                    }
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
                     buffer = lines.pop();
@@ -808,94 +920,33 @@ document.addEventListener('DOMContentLoaded', () => {
              placeholder.parentElement.remove();
         }
 
-        if (hasThought) {
-            updateStatus('Thinking...', 'thinking', targetSessionId);
-
-            const lastChild = agentMessageDiv.lastElementChild;
-            const isLastChildThinking = lastChild && lastChild.classList.contains('thinking-container');
-
-            if (isLastChildThinking) {
-                state.currentThinkingContainer = lastChild;
-                state.currentBlockElement = lastChild.querySelector('.thinking-content');
-                state.currentBlockType = 'thinking';
-                state.isThinking = true;
-            } else {
-                if (state.isThinking) stopThinking(state);
-                state.isThinking = true;
-
-                state.currentThinkingContainer = document.createElement('div');
-                state.currentThinkingContainer.classList.add('thinking-container');
-
-                const header = document.createElement('div');
-                header.classList.add('thinking-header');
-                header.innerHTML = `
-                    <svg class="spinner" viewBox="0 0 50 50">
-                        <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle>
-                    </svg>
-                    Thinking...
-                `;
-                state.currentThinkingContainer.appendChild(header);
-
-                const currentThinkingContent = document.createElement('div');
-                currentThinkingContent.classList.add('thinking-content');
-                state.currentThinkingContainer.appendChild(currentThinkingContent);
-
-                agentMessageDiv.appendChild(state.currentThinkingContainer);
-
-                state.currentBlockType = 'thinking';
-                state.currentBlockElement = currentThinkingContent;
-                state.accumulatedThoughts = '';
+        if (toolResponse) {
+            let skip = false;
+            let failedAuth = false;
+            
+            let hasError = toolResponse.response && (toolResponse.response.error || toolResponse.response.oauth2?.error || (toolResponse.response.status && toolResponse.response.status === 'ERROR'));
+            let isCredentialError = false;
+            if (hasError) {
+                let textStr = JSON.stringify(toolResponse.response);
+                if (textStr.toLowerCase().includes('credential') || textStr.toLowerCase().includes('authenticated') || textStr.toLowerCase().includes('auth')) {
+                    isCredentialError = true;
+                }
             }
 
-            state.accumulatedThoughts = state.currentBlockElement.textContent + thoughtText;
-            state.currentBlockElement.textContent = state.accumulatedThoughts;
-        }
+            if (toolResponse.name === 'adk_request_credential') {
+                if (!hasError) skip = true;
+                else failedAuth = true;
+            } else if (isCredentialError) {
+                failedAuth = true;
+            }
 
-        if (toolCall) {
-            updateStatus('Working...', 'working', targetSessionId);
-            if (state.isThinking) stopThinking(state);
+            if (!skip) {
+                updateStatus('Thinking...', 'thinking', targetSessionId);
+                if (state.isThinking) stopThinking(state);
 
-            if (toolCall.name === 'adk_request_credential') {
-                handleAuthRequired(toolCall, agentMessageDiv, targetSessionId);
-                return true;
-            } else {
                 const details = document.createElement('details');
                 details.classList.add('tool-call');
-
-                const summary = document.createElement('summary');
-                summary.innerHTML = `<i class="fas fa-cogs"></i> Tool Call: ${toolCall.name}`;
-                details.appendChild(summary);
-
-                const content = document.createElement('div');
-                content.classList.add('tool-content');
-
-                if (toolCall.args && toolCall.args.code) {
-                    const markdownCode = `\`\`\`python\n${toolCall.args.code}\n\`\`\``;
-                    content.innerHTML = DOMPurify.sanitize(marked.parse(markdownCode));
-                } else {
-                    const pre = document.createElement('pre');
-                    const code = document.createElement('code');
-                    code.classList.add('language-json');
-                    code.textContent = JSON.stringify(toolCall.args, null, 2);
-                    pre.appendChild(code);
-                    content.appendChild(pre);
-                }
-                content.querySelectorAll('pre code').forEach(hljs.highlightElement);
-                details.appendChild(content);
-
-                agentMessageDiv.appendChild(details);
-
-                state.currentBlockType = 'toolCall';
-                state.currentBlockElement = details;
-            }
-        }
-
-        if (toolResponse) {
-            updateStatus('Thinking...', 'thinking', targetSessionId);
-            if (state.isThinking) stopThinking(state);
-
-            const details = document.createElement('details');
-            details.classList.add('tool-call');
+                if (failedAuth) details.setAttribute('open', 'true'); // Keep failed auth open!
 
             const summary = document.createElement('summary');
             summary.innerHTML = `<i class="fas fa-check-circle"></i> Tool Result: ${toolResponse.name}`;
@@ -911,6 +962,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state.currentBlockType = 'toolResponse';
             state.currentBlockElement = details;
+            if (failedAuth) return true;
+          }
+        }
+
+        if (hasThought) {
+            updateStatus('Thinking...', 'thinking', targetSessionId);
+
+            if (thoughtText.trim() === (state.accumulatedThoughts || '').trim()) {
+                // Skip creating duplicate block!
+            } else {
+                if (state.currentBlockType !== 'thinking') {
+                    if (state.isThinking) stopThinking(state);
+                    state.isThinking = true;
+
+                    state.currentThinkingContainer = document.createElement('div');
+                    state.currentThinkingContainer.classList.add('thinking-container');
+
+                    const header = document.createElement('div');
+                    header.classList.add('thinking-header');
+                    header.innerHTML = `
+                        <svg class="spinner" viewBox="0 0 50 50">
+                            <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle>
+                        </svg>
+                        Thinking...
+                    `;
+                    state.currentThinkingContainer.appendChild(header);
+
+                    const currentThinkingContent = document.createElement('div');
+                    currentThinkingContent.classList.add('thinking-content');
+                    state.currentThinkingContainer.appendChild(currentThinkingContent);
+
+                    agentMessageDiv.appendChild(state.currentThinkingContainer);
+
+                    state.currentBlockType = 'thinking';
+                    state.currentBlockElement = currentThinkingContent;
+                    state.accumulatedThoughts = '';
+                }
+
+                state.accumulatedThoughts += thoughtText;
+                state.currentBlockElement.innerHTML = DOMPurify.sanitize(marked.parse(state.accumulatedThoughts));
+                state.currentBlockElement.querySelectorAll('pre code').forEach(hljs.highlightElement);
+            }
+        }
+
+        if (toolCall) {
+            updateStatus('Working...', 'working', targetSessionId);
+            if (state.isThinking) stopThinking(state);
+
+            if (toolCall.name === 'adk_request_credential') {
+                handleAuthRequired(toolCall, agentMessageDiv, targetSessionId);
+                return true;
+            } else {
+                const details = document.createElement('details');
+                details.classList.add('tool-call');
+
+            const summary = document.createElement('summary');
+            summary.innerHTML = `<i class="fas fa-cogs"></i> Tool Call: ${toolCall.name}`;
+            details.appendChild(summary);
+
+            const content = document.createElement('div');
+            content.classList.add('tool-content');
+
+            if (toolCall.args && toolCall.args.code) {
+                const markdownCode = `\`\`\`python\n${toolCall.args.code}\n\`\`\``;
+                content.innerHTML = DOMPurify.sanitize(marked.parse(markdownCode));
+            } else {
+                const pre = document.createElement('pre');
+                const code = document.createElement('code');
+                code.classList.add('language-json');
+                code.textContent = JSON.stringify(toolCall.args, null, 2);
+                pre.appendChild(code);
+                content.appendChild(pre);
+            }
+            content.querySelectorAll('pre code').forEach(hljs.highlightElement);
+            details.appendChild(content);
+
+            agentMessageDiv.appendChild(details);
+
+            state.currentBlockType = 'toolCall';
+            state.currentBlockElement = details;
+            }
         }
 
         const textToAppend = contentText || data.text;
@@ -918,17 +1050,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.isThinking) stopThinking(state);
 
             if (textToAppend) {
-                if (state.currentBlockType !== 'text') {
-                    const newContentDiv = document.createElement('div');
-                    newContentDiv.classList.add('message-content');
-                    agentMessageDiv.appendChild(newContentDiv);
-                    state.currentBlockType = 'text';
-                    state.currentBlockElement = newContentDiv;
+                if (textToAppend.trim() === (state.accumulatedText || '').trim()) {
+                    // Skip creating duplicate block!
+                } else {
+                    if (state.currentBlockType !== 'text') {
+                        const newContentDiv = document.createElement('div');
+                        newContentDiv.classList.add('message-content');
+                        agentMessageDiv.appendChild(newContentDiv);
+                        state.currentBlockType = 'text';
+                        state.currentBlockElement = newContentDiv;
+                        state.accumulatedText = '';
+                    }
+                    state.accumulatedText += textToAppend;
+                    state.currentBlockElement.innerHTML = DOMPurify.sanitize(marked.parse(state.accumulatedText));
+                    state.currentBlockElement.querySelectorAll('pre code').forEach(hljs.highlightElement);
+                    state.currentBlockElement.setAttribute('data-raw-text', state.accumulatedText);
                 }
-                appendChunk(state.currentBlockElement, textToAppend);
             }
         }
-
+        
         if (data.actions && data.actions.artifactDelta) {
             const artifactDelta = data.actions.artifactDelta;
             if (Object.keys(artifactDelta).length > 0) {
@@ -938,6 +1078,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
+        return false;
     }
 
     async function fetchArtifactContent(filename, version, parentElement) {
