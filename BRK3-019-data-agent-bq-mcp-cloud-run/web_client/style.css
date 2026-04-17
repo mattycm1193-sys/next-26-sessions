@@ -406,6 +406,16 @@ textarea::placeholder {
     color: white;
 }
 
+.stop-button {
+    background-color: var(--google-red);
+    color: white;
+}
+
+.stop-button:hover {
+    background-color: #c5221f;
+    color: white;
+}
+
 /* Attachment Preview */
 .attachment-preview {
     padding: 8px;

@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const body = document.body;
     const chatInput = document.getElementById('chat-input');
     const sendButton = document.getElementById('send-button');
+    const stopButton = document.getElementById('stop-button');
     const messageList = document.getElementById('message-list');
     const chatContainer = document.querySelector('.chat-container');
 
@@ -241,30 +242,32 @@ document.addEventListener('DOMContentLoaded', () => {
             prevScrollHeight = chatContainer.scrollHeight;
             chatContainer.scrollTop = chatContainer.scrollHeight;
         } else {
-            // Fetch from server or show default
-            messageList.innerHTML = '<div class="message system-message"><div class="message-content">Loading history...</div></div>';
-            chatInput.value = '';
-            prevScrollHeight = chatContainer.scrollHeight;
+            await reloadCurrentSession();
+        }
+    }
 
-            try {
-                const response = await fetch(`/apps/${appName}/users/${userId}/sessions/${sessionId}`);
-                if (response.ok) {
-                    const sessionData = await response.json();
-                    renderSessionHistory(sessionData.events);
-                } else {
-                    // Default message if session not found or empty
-                    messageList.innerHTML = `
-                        <div class="message system-message">
-                            <div class="message-content">
-                                How can I help you today?
-                            </div>
+    async function reloadCurrentSession() {
+        messageList.innerHTML = '<div class="message system-message"><div class="message-content">Loading history...</div></div>';
+        chatInput.value = '';
+        prevScrollHeight = chatContainer.scrollHeight;
+
+        try {
+            const response = await fetch(`/apps/${appName}/users/${userId}/sessions/${sessionId}`);
+            if (response.ok) {
+                const sessionData = await response.json();
+                renderSessionHistory(sessionData.events);
+            } else {
+                messageList.innerHTML = `
+                    <div class="message system-message">
+                        <div class="message-content">
+                            How can I help you today?
                         </div>
-                    `;
-                }
-            } catch (error) {
-                console.error('Error loading session history:', error);
-                messageList.innerHTML = '<div class="message system-message"><div class="message-content">Error loading history.</div></div>';
+                    </div>
+                `;
             }
+        } catch (error) {
+            console.error('Error loading session history:', error);
+            messageList.innerHTML = '<div class="message system-message"><div class="message-content">Error loading history.</div></div>';
         }
     }
 
@@ -542,6 +545,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Send Message
     sendButton.addEventListener('click', sendMessage);
+    stopButton.addEventListener('click', async () => {
+        const state = getSessionState(sessionId);
+        if (state.isStreaming && state.currentReader) {
+            console.log(`[app.js] Stop button clicked for session ${sessionId}`);
+            state.currentReader.cancel();
+            state.isStreaming = false;
+            
+            state.messageElements = [];
+            
+            await reloadCurrentSession();
+            
+            const messageList = document.getElementById('message-list');
+            const stopDiv = document.createElement('div');
+            stopDiv.className = 'message system-message';
+            stopDiv.innerHTML = '<div class="message-content"><i class="fas fa-stop-circle"></i> Session stopped by user.</div>';
+            messageList.appendChild(stopDiv);
+            
+            state.messageElements.push(stopDiv);
+            
+            prevScrollHeight = chatContainer.scrollHeight;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    });
     chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -558,6 +584,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         state.toolFailed = false; // Reset hard locks on manual user revisions flawlessly!
+        
+        sendButton.classList.add('hidden');
+        stopButton.classList.remove('hidden');
 
         const text = chatInput.value.trim();
         if (!text && !currentAttachment) return;
@@ -702,6 +731,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             state.isStreaming = false;
             state.currentReader = null;
+            sendButton.classList.remove('hidden');
+            stopButton.classList.add('hidden');
         }
     }
 
@@ -790,6 +821,8 @@ document.addEventListener('DOMContentLoaded', () => {
     async function resumeStreamAfterAuth(redirectedUrl, redirectUri, authConfig, functionCallId, targetSessionId, agentMessageDiv, card) {
         const state = getSessionState(targetSessionId);
         console.log(`[app.js] resumeStreamAfterAuth: initiated for session ${targetSessionId}`);
+        sendButton.classList.add('hidden');
+        stopButton.classList.remove('hidden');
         if (state.toolFailed) {
             console.warn("Session interruption: Tool failure smells. Drop early.");
             return;
@@ -942,6 +975,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             state.isStreaming = false;
             state.currentReader = null;
+            sendButton.classList.remove('hidden');
+            stopButton.classList.add('hidden');
         }
     }
 
