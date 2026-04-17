@@ -15,10 +15,8 @@ import (
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/artifact"
-	"google.golang.org/adk/cmd/launcher"
 	"google.golang.org/adk/memory"
 	"google.golang.org/adk/model/gemini"
-	"google.golang.org/adk/runner"
 	"google.golang.org/adk/server/adkrest"
 	"google.golang.org/adk/session"
 	"google.golang.org/adk/tool"
@@ -84,16 +82,20 @@ func main() {
 	}
 
 	// use httptest to make a local http endpoint here.
-	agentapi := adkrest.NewHandler(
-		&launcher.Config{
+	agentapi, err := adkrest.NewServer(
+		adkrest.ServerConfig{
 			SessionService:  session.InMemoryService(),
 			ArtifactService: artifact.InMemoryService(),
 			MemoryService:   memory.InMemoryService(),
 			AgentLoader:     agent.NewSingleLoader(recipeAgent),
-			PluginConfig:    runner.PluginConfig{},
+			SSEWriteTimeout: 30 * time.Second,
+			// required. see github.com/google/adk-go/issues/727
+			DebugConfig: &adkrest.DebugTelemetryConfig{},
 		},
-		30*time.Second,
 	)
+	if err != nil {
+		log.Fatal(err)
+	}
 	svr := http.NewServeMux()
 	svr.Handle("/api/", http.StripPrefix("/api", agentapi))
 	testsvr := httptest.NewServer(agentapi)
