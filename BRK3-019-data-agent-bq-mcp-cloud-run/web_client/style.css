@@ -55,7 +55,7 @@ body {
 
 .app-container {
     width: 100%;
-    max-width: 1000px;
+    max-width: 1200px;
     height: 95vh;
     background-color: var(--surface-color);
     backdrop-filter: blur(12px);
@@ -272,7 +272,7 @@ h1 {
 }
 
 .message {
-    max-width: 80%;
+    max-width: 85%;
     padding: 14px 18px;
     border-radius: 18px;
     line-height: 1.5;
@@ -331,7 +331,6 @@ h1 {
 .thinking-content {
     font-size: 14px;
     color: var(--text-secondary);
-    white-space: pre-wrap;
     font-family: monospace;
 }
 
@@ -493,9 +492,38 @@ body.dark-theme .message-content code {
     margin-bottom: 0;
 }
 
-.message-content ol, .message-content ul {
+.message-content ol {
+    list-style-type: decimal;
     padding-left: 24px;
     margin-bottom: 8px;
+}
+
+.message-content ul {
+    list-style-type: disc;
+    padding-left: 24px;
+    margin-bottom: 8px;
+}
+
+.message-content li {
+    margin-bottom: 4px;
+    margin-left: 8px;
+}
+
+.thinking-content ol {
+    list-style-type: decimal;
+    padding-left: 24px;
+    margin-bottom: 8px;
+}
+
+.thinking-content ul {
+    list-style-type: disc;
+    padding-left: 24px;
+    margin-bottom: 8px;
+}
+
+.thinking-content li {
+    margin-bottom: 4px;
+    margin-left: 8px;
 }
 
 /* Artifacts */
