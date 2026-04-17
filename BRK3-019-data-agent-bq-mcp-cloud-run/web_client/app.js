@@ -67,7 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentBlockElement: null,
                 isThinking: false,
                 accumulatedThoughts: '',
-                currentThinkingContainer: null
+                currentThinkingContainer: null,
+                toolFailed: false,
+                isStreaming: false,
+                currentReader: null
             };
         }
         return sessionStates[id];
@@ -548,6 +551,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function sendMessage() {
         const targetSessionId = sessionId; // Capture current session ID
+        console.log(`[app.js] sendMessage: initiated for session ${targetSessionId}`);
+        const state = getSessionState(targetSessionId);
+        if (state.isStreaming) {
+            console.warn(`[app.js] sendMessage: Session ${targetSessionId} is already streaming. Ignoring request.`);
+            return;
+        }
+        state.toolFailed = false; // Reset hard locks on manual user revisions flawlessly!
+
         const text = chatInput.value.trim();
         if (!text && !currentAttachment) return;
 
@@ -604,6 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Use relative path to go through the proxy
+            console.log(`[app.js] sendMessage: Fetching /run_sse for session ${targetSessionId}`);
             const response = await fetch(`/run_sse`, {
                 method: 'POST',
                 headers: {
@@ -617,6 +629,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const reader = response.body.getReader();
+            state.currentReader = reader;
+            state.isStreaming = true;
+            
             const decoder = new TextDecoder();
             let buffer = '';
             let currentEventData = '';
@@ -684,6 +699,9 @@ document.addEventListener('DOMContentLoaded', () => {
             contentDiv.innerHTML = `<span style="color: var(--google-red)">Error: Failed to connect to agent server.</span>`;
             activeConnections.delete(targetSessionId);
             updateStatus('', '', targetSessionId);
+        } finally {
+            state.isStreaming = false;
+            state.currentReader = null;
         }
     }
 
@@ -698,6 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleAuthRequired(toolCall, agentMessageDiv, targetSessionId) {
+        console.log(`[app.js] handleAuthRequired: triggered for session ${targetSessionId}`);
         const authConfig = toolCall.args.authConfig || toolCall.args;
         const functionCallId = toolCall.id || toolCall.functionCallId;
         currentToolName = toolCall.args.toolName || toolCall.args.targetTool || 'Tool';
@@ -725,12 +744,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const authUri = authConfig.exchangedAuthCredential.oauth2.authUri + "&redirect_uri=" + encodeURIComponent(redirectUri);
 
             const popup = window.open(authUri, 'adk_oauth', 'width=600,height=700');
-
+            
             let isResumingAuth = false;
+            
+            const popupTimer = setInterval(() => {
+                if (popup.closed) {
+                    clearInterval(popupTimer);
+                    if (!isResumingAuth) {
+                        card.innerHTML = '<div class="auth-failed-badge"><i class="fas fa-exclamation-triangle"></i> Authentication cancelled by closing popup.</div>';
+                        window.removeEventListener('message', messageListener);
+                        const state = getSessionState(targetSessionId);
+                        state.toolFailed = true;
+                    }
+                }
+            }, 1000);
+
             function messageListener(event) {
                 if (event.origin !== window.location.origin) return;
                 if (event.data && event.data.type === 'ADK_OAUTH_CALLBACK') {
+                    console.log(`[app.js] messageListener: ADK_OAUTH_CALLBACK received for session ${targetSessionId}`);
                     if (isResumingAuth) return;
+                    
+                    clearInterval(popupTimer);
+                    const url = event.data.url;
+                    const hasError = url.includes('error=') || !url.includes('code=');
+                    
+                    if (hasError) {
+                        card.innerHTML = '<div class="auth-failed-badge"><i class="fas fa-exclamation-triangle"></i> Authentication failed in popup!</div>';
+                        const state = getSessionState(targetSessionId);
+                        state.authFailed = true;
+                        window.removeEventListener('message', messageListener);
+                        return;
+                    }
+                    
                     isResumingAuth = true;
                     window.removeEventListener('message', messageListener);
                     card.innerHTML = '<div class="auth-success-spinner"><svg class="spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Authenticating...</div>';
@@ -742,6 +788,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function resumeStreamAfterAuth(redirectedUrl, redirectUri, authConfig, functionCallId, targetSessionId, agentMessageDiv, card) {
+        const state = getSessionState(targetSessionId);
+        console.log(`[app.js] resumeStreamAfterAuth: initiated for session ${targetSessionId}`);
+        if (state.toolFailed) {
+            console.warn("Session interruption: Tool failure smells. Drop early.");
+            return;
+        }
+
         authConfig.exchangedAuthCredential.oauth2.authResponseUri = redirectedUrl;
         authConfig.exchangedAuthCredential.oauth2.redirectUri = redirectUri;
 
@@ -771,6 +824,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStatus('Thinking...', 'thinking', targetSessionId);
 
         try {
+            console.log(`[app.js] resumeStreamAfterAuth: Fetching /run_sse for session ${targetSessionId}`);
             const response = await fetch(`/run_sse`, {
                 method: 'POST',
                 headers: {
@@ -782,6 +836,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const reader = response.body.getReader();
+            state.currentReader = reader;
+            state.isStreaming = true;
+            
             const decoder = new TextDecoder();
             let buffer = '';
             let currentEventData = '';
@@ -882,6 +939,9 @@ document.addEventListener('DOMContentLoaded', () => {
              console.error('Error during stream resumption:', error);
              activeConnections.delete(targetSessionId);
              updateStatus('', '', targetSessionId);
+        } finally {
+            state.isStreaming = false;
+            state.currentReader = null;
         }
     }
 
@@ -940,6 +1000,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 failedAuth = true;
             }
 
+            if (failedAuth) {
+                const state = getSessionState(targetSessionId);
+                state.toolFailed = true;
+                if (state.currentReader) {
+                    state.currentReader.cancel();
+                }
+                return true;
+            }
+
             if (!skip) {
                 updateStatus('Thinking...', 'thinking', targetSessionId);
                 if (state.isThinking) stopThinking(state);
@@ -962,7 +1031,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state.currentBlockType = 'toolResponse';
             state.currentBlockElement = details;
-            if (failedAuth) return true;
+            if (failedAuth) {
+                state.authFailed = true;
+                return true;
+            }
           }
         }
 

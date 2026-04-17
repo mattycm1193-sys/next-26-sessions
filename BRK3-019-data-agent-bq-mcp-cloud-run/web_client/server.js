@@ -190,6 +190,15 @@ const server = http.createServer(async (req, res) => {
             proxyRes.pipe(res);
         });
 
+        if (req.url.startsWith('/run_sse')) {
+            res.on('close', () => {
+                if (!res.writableEnded) {
+                    console.log(`[server.js] Client disconnected prematurely, aborting proxy request to ${options.hostname}:${options.port}`);
+                    proxyReq.abort();
+                }
+            });
+        }
+
         proxyReq.on('error', (e) => {
             console.error(`Problem with proxy request: ${e.message}`);
             res.writeHead(500);
