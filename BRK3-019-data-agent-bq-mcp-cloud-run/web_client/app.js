@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 if (appTitleEl) appTitleEl.textContent = appName;
                 if (appDescEl) appDescEl.textContent = config.description || '';
+                document.title = `${appName}  - ADK Agent Client`;
             }
         } catch (e) {
             console.error('Failed to load config:', e);
