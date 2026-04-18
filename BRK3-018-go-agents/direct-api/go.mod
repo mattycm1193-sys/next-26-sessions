@@ -2,7 +2,7 @@ module directapi
 
 go 1.25.0
 
-require google.golang.org/genai v1.46.0
+require google.golang.org/genai v1.54.0
 
 require (
 	cloud.google.com/go v0.120.0 // indirect
