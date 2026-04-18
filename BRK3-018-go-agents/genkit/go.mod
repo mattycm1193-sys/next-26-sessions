@@ -2,7 +2,7 @@ module genkit
 
 go 1.25.0
 
-require google.golang.org/genai v1.46.0 // indirect
+require google.golang.org/genai v1.51.0 // indirect
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -35,7 +35,7 @@ require (
 	cloud.google.com/go v0.120.0 // indirect
 	cloud.google.com/go/auth v0.16.2 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
-	github.com/firebase/genkit/go v1.4.0
+	github.com/firebase/genkit/go v1.6.1
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
