@@ -61,7 +61,10 @@ custom_model = LiteLlm(
 
 
 tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED, location="US")
-if "OAUTH_CLIENT_ID" in os.environ and "OAUTH_CLIENT_SECRET" in os.environ:
+if (
+    os.getenv("OAUTH_CLIENT_ID") and
+    os.getenv("OAUTH_CLIENT_SECRET")
+):
     credentials_config = BigQueryCredentialsConfig(
         client_id=os.getenv("OAUTH_CLIENT_ID"),
         client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
@@ -105,6 +108,8 @@ Plan of action:
 5. Retrieve data by generating BigQuery SQL and using `execute_sql`.
    Always use Dry Run to verify SQL correctness.
    Use `{project_id}` to run BigQuery queries (`project_id` parameter of `execute_sql`).
+
+Do not use LaTeX in your responses. When giving final asnwer, use Markdown.
 """
 
 root_agent = LlmAgent(
