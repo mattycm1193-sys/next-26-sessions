@@ -1,0 +1,278 @@
+recipes:
+  - name: Palak Paneer
+    origin: India
+    type: Main Course
+    ingredients:
+      - spinach
+      - paneer cheese
+      - onions
+      - tomatoes
+      - ginger
+      - garlic
+      - spices (cumin, coriander, garam masala, turmeric)
+      - cream
+    description: A popular North Indian curry made with blanched spinach puree and soft paneer cubes.
+
+  - name: Eggplant Parmigiana (Melanzane alla Parmigiana)
+    origin: Italy
+    type: Main Course
+    ingredients:
+      - eggplant
+      - tomato sauce
+      - mozzarella cheese
+      - parmesan cheese
+      - basil
+      - flour
+      - oil for frying
+    description: A classic Italian baked dish made with fried eggplant slices layered with cheese and tomato sauce.
+
+  - name: Chiles Rellenos
+    origin: Mexico
+    type: Main Course
+    ingredients:
+      - poblano peppers
+      - queso fresco or monterey jack cheese
+      - eggs
+      - flour
+      - tomato salsa
+    description: Roasted poblano peppers stuffed with cheese, battered with egg, and fried, served with salsa.
+
+  - name: Thai Green Curry (Kaeng Khiao Wan)
+    origin: Thailand
+    type: Main Course
+    ingredients:
+      - green curry paste
+      - coconut milk
+      - tofu or vegetables (bamboo shoots, eggplant, bell peppers)
+      - thai basil
+      - kaffir lime leaves
+      - palm sugar
+      - soy sauce or vegetarian fish sauce substitute
+    description: A fragrant and spicy curry made with green chilies, coconut milk, and fresh herbs.
+
+  - name: Falafel
+    origin: Middle East
+    type: Appetizer / Main Course
+    ingredients:
+      - chickpeas (soaked, not canned)
+      - onions
+      - parsley
+      - cilantro
+      - garlic
+      - cumin
+      - coriander
+      - baking soda
+      - oil for frying
+    description: Deep-fried balls or patties made from ground chickpeas and herbs, often served in pita.
+
+  - name: Vegetable Tempura
+    origin: Japan
+    type: Appetizer / Main Course
+    ingredients:
+      - assorted vegetables (sweet potato, bell pepper, eggplant, pumpkin)
+      - cake flour
+      - cornstarch
+      - ice cold water
+      - egg yolk (optional for batter)
+      - dipping sauce (tentsuyu)
+    description: Lightly battered and deep-fried vegetables, served with a soy-based dipping sauce.
+
+  - name: Misir Wot
+    origin: Ethiopia
+    type: Main Course
+    ingredients:
+      - red lentils
+      - red onions
+      - garlic
+      - ginger
+      - berbere spice blend
+      - niter kibbeh (spiced clarified butter) or oil
+      - tomato paste
+    description: A spicy red lentil stew, a staple of Ethiopian cuisine, usually served with injera.
+
+  - name: Spanakopita
+    origin: Greece
+    type: Appetizer / Side Dish
+    ingredients:
+      - spinach
+      - feta cheese
+      - onions
+      - scallions
+      - dill
+      - eggs
+      - phyllo dough
+      - olive oil
+      - butter
+    description: A savory pastry made with flaky phyllo dough and a filling of spinach and feta cheese.
+
+  - name: Vegetarian Mapo Tofu
+    origin: China (Sichuan)
+    type: Main Course
+    ingredients:
+      - silken tofu
+      - doubanjiang (broad bean chili paste)
+      - fermented black beans
+      - dried chili peppers
+      - sichuan peppercorns
+      - ginger
+      - garlic
+      - shiitake mushrooms (minced, as meat substitute)
+      - scallions
+    description: A spicy, numbing, and savory tofu dish cooked in a fermented chili bean sauce.
+
+  - name: Ratatouille
+    origin: France (Provence)
+    type: Main Course / Side Dish
+    ingredients:
+      - eggplant
+      - zucchini
+      - bell peppers
+      - tomatoes
+      - onions
+      - garlic
+      - olive oil
+      - herbs de provence (thyme, rosemary, oregano)
+    description: A classic French vegetable stew celebrating summer vegetables.
+
+  - name: Vegetarian Paella
+    origin: Spain
+    type: Main Course
+    ingredients:
+      - bomba or arborio rice
+      - saffron
+      - vegetable broth
+      - artichokes
+      - green beans
+      - lima beans (garrofón)
+      - bell peppers
+      - tomatoes
+      - paprika
+    description: A vibrant rice dish cooked with saffron and a variety of vegetables.
+
+  - name: Tofu Banh Mi
+    origin: Vietnam
+    type: Sandwich
+    ingredients:
+      - baguette
+      - lemongrass marinated tofu
+      - pickled daikon and carrots (do chua)
+      - cucumber
+      - cilantro
+      - jalapeño
+      - mayonnaise
+      - soy sauce or maggi seasoning
+    description: A Vietnamese sandwich featuring savory tofu, crisp pickled vegetables, and fresh herbs on a baguette.
+
+  - name: Dolsot Bibimbap (Vegetarian)
+    origin: Korea
+    type: Main Course
+    ingredients:
+      - rice
+      - spinach
+      - bean sprouts
+      - shiitake mushrooms
+      - carrots
+      - zucchini
+      - egg (fried or raw yolk)
+      - gochujang (red chili paste)
+      - sesame oil
+    description: A hot stone bowl rice dish topped with various sautéed vegetables, an egg, and spicy sauce.
+
+  - name: Vegetable Tagine
+    origin: Morocco
+    type: Main Course
+    ingredients:
+      - carrots
+      - potatoes
+      - zucchini
+      - chickpeas
+      - dried apricots or prunes
+      - onions
+      - garlic
+      - spices (cumin, ginger, cinnamon, saffron)
+      - preserved lemon
+      - couscous (for serving)
+    description: A slow-cooked savory stew with vegetables, dried fruits, and aromatic spices.
+
+  - name: Imam Bayildi
+    origin: Turkey
+    type: Appetizer / Side Dish
+    ingredients:
+      - whole eggplant
+      - onions
+      - garlic
+      - tomatoes
+      - parsley
+      - olive oil
+      - sugar
+      - lemon juice
+    description: "The imam fainted": stuffed eggplant braised in plenty of olive oil, served at room temperature.
+
+  - name: Lobio
+    origin: Georgia
+    type: Main Course / Side Dish
+    ingredients:
+      - kidney beans (red beans)
+      - onions
+      - garlic
+      - walnuts
+      - cilantro
+      - blue fenugreek
+      - coriander seeds
+      - vinegar or pomegranate juice
+    description: A rich and savory bean stew thickened with ground walnuts and fresh herbs.
+
+  - name: Papa a la Huancaina
+    origin: Peru
+    type: Appetizer
+    ingredients:
+      - yellow potatoes
+      - aji amarillo peppers
+      - queso fresco
+      - evaporated milk
+      - crackers (for thickening)
+      - oil
+      - hard-boiled eggs
+      - black olives
+    description: Boiled potatoes covered in a spicy, creamy cheese sauce made with yellow chili peppers.
+
+  - name: Gado-Gado
+    origin: Indonesia
+    type: Salad / Main Course
+    ingredients:
+      - steamed vegetables (green beans, spinach, cabbage, bean sprouts)
+      - fried tofu
+      - tempeh
+      - hard-boiled eggs
+      - boiled potatoes
+      - peanut sauce dressing
+      - krupuk (crackers)
+    description: A warm vegetable salad with tofu and tempeh, dressed in a rich peanut sauce.
+
+  - name: Tabbouleh
+    origin: Lebanon
+    type: Salad
+    ingredients:
+      - fine bulgur wheat
+      - parsley (lots of it)
+      - fresh mint
+      - tomatoes
+      - scallions
+      - lemon juice
+      - olive oil
+    description: A fresh herb salad dominated by parsley and mint, with a little bulgur and tomato.
+
+  - name: Black Bean Burger
+    origin: United States
+    type: Main Course
+    ingredients:
+      - black beans
+      - onions
+      - garlic
+      - bell peppers
+      - breadcrumbs
+      - egg (binder)
+      - spices (cumin, chili powder, paprika)
+      - burger buns
+      - toppings (lettuce, tomato, cheese)
+    description: A hearty vegetarian burger patty made from mashed black beans and spices.
