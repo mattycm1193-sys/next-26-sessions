@@ -15,22 +15,22 @@
 sources:
     alloydb-source:
         kind: "alloydb-postgres"
-        project: "**********************"
+        project: "gen-lang-client-0498125677"
         region: "us-central1"
-        cluster: "*****"
-        instance: "*****"
+        cluster: "ecommerce-cluster"
+        instance: "ecommerce-cluster-primary"
         database: "postgres"
         user: "postgres"
-        password: "*****"
+        password: "pg@9>JV5~_B6h^A."
     
     mongo-source:
         kind: "mongodb"
-        uri: "mongodb+srv://*****:*****@********"
+        uri: "mongodb+srv://mattycm:pYuHST48d6ge2nnb@gss-mongo-cluster.6amg1zw.mongodb.net/?appName=gss-mongo-cluster"
 
 
     bigquery-source:
         kind: "bigquery"
-        project: "*****"
+        project: "gen-lang-client-0498125677"
         location: us
 
 tools:
